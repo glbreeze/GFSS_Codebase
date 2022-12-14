@@ -9,7 +9,7 @@ from src.model import *
 from src.model.nets.pspnet import get_model
 from src.model.base.transformer import FuseNet
 from src.optimizer import get_optimizer, get_scheduler
-from src.dataset.dataset import get_val_loader, get_train_loader
+from lib.dataset.dataset import get_val_loader, get_train_loader
 from src.util import intersectionAndUnionGPU, AverageMeter
 import argparse
 from src.util import load_cfg_from_cfg_file, merge_cfg_from_list

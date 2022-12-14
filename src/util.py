@@ -28,6 +28,7 @@ def tensor_slice(x, idx=None, ref=None):    # idx is 0/1, ref is tensor on gpu
         out = x[ torch.arange(n//2, device=indices.device), indices ]
     return out
 
+
 def get_aux_loss(wt, att_q, f_q, q_label, model, eps=0.6, reduction='mean'):
     pd0 = F.softmax(model.classifier(att_q), dim=1)   # [1, 2, 60, 60]
     pd1 = F.softmax(model.classifier(f_q), dim=1)

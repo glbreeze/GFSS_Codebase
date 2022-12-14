@@ -13,7 +13,7 @@ import torch.optim as optim
 from src.model import get_model
 from src.model.base.transformer import MultiHeadAttentionOne
 from .optimizer import get_optimizer
-from .dataset.dataset import get_val_loader, get_train_loader
+from lib.dataset.dataset import get_val_loader, get_train_loader
 from .util import intersectionAndUnionGPU, AverageMeter, get_model_dir_trans
 from .test import validate_transformer
 import argparse

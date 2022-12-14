@@ -10,14 +10,12 @@
 #SBATCH --mail-user=lg154@nyu.edu
 #SBATCH --output=pretrain.out
 #SBATCH --gres=gpu # How much gpu need, n is the number
-#SBATCH --partition=v100
+#SBATCH --partition=a100_1,a100_2,v100,rtx8000
 
 module purge
 
 DATA=$1
 SPLIT=$2
-LAYERS=$3
-SHOT=$4
 
 
 echo "start"
@@ -26,13 +24,8 @@ singularity exec --nv \
             --overlay /scratch/lg154/sseg/dataset/coco2014.sqf:ro \
             /scratch/work/public/singularity/cuda11.2.2-cudnn8-devel-ubuntu20.04.sif \
             /bin/bash -c " source /ext3/env.sh;
-            python -m src.pretrain_contrast --config config_files/${DATA}_pretrain.yaml \
-					 --opts train_split ${SPLIT} \
-						    layers ${LAYERS} \
-						    shot ${SHOT} \
-						    cls_lr 0.1 \
-						    batch_size_val 1 \
-
+            python -m src.pretrain --config config_files/${DATA}_pretrain.json \
+					  --train_split ${SPLIT} \
 					 > log.txt 2>&1"
 
 echo "finish"

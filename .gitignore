@@ -3,7 +3,7 @@ model_ckpt
 utils/__pychache__/
 *.jpg
 src/.idea/
-src/dataset/__pychache__/
+lib/dataset/__pychache__/
 *.out
 *.pth
 *.pyc

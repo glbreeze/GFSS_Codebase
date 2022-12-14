@@ -11,7 +11,7 @@ import torch.nn.parallel
 import torch.utils.data
 import torch.optim as optim
 from collections import defaultdict
-from .dataset.dataset import get_val_loader
+from lib.dataset.dataset import get_val_loader
 from .util import AverageMeter, batch_intersectionAndUnionGPU, get_model_dir_trans
 from src.model import get_model, CosCls
 from src.model.base.transformer import MultiHeadAttentionOne

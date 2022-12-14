@@ -1,0 +1,120 @@
+{
+    "train_name": "pascal",
+    "test_name": "default",
+    "train_split" : 0,
+    "test_split": "default",
+    "shot": 1,
+    "manual_seed": 42,
+    "method": "fcn_segmentor",
+    "gpu": null,
+    "exp_name": "deeplab_r50",
+
+    "data": {
+      "data_root": "../dataset/VOCdevkit/VOC2012",
+      "train_list": "lists/pascal/train.txt",
+      "val_list": "lists/pascal/val.txt",
+      "num_classes": 16,
+      "num_classes_val": 5,
+      "use_split_coco": false,
+      "workers": 2,
+      "image_size": 473,
+      "padding_label": 255,
+      "padding": "avg",
+      "mean": [0.485, 0.456, 0.406],
+      "std": [0.229, 0.224, 0.225],
+      "scale_min": 0.5,
+      "scale_max": 2.0,
+      "rot_min": -10,
+      "rot_max": 10,
+      "augmentations": ["hor_flip", "vert_flip", "resize"]
+    },
+
+   "train": {
+      "ckpt_path": "checkpoints/",
+      "batch_size": 8,
+      "epochs": 100,
+      "log_freq" : 50,
+      "save_models": true
+    },
+
+  "network":{
+      "backbone": "deepbase_resnet50_dilated8",
+      "pretrained": "initmodel/resnet50_v2.pth",
+      "gathered": false,
+      "multi_grid": [1, 1, 1],
+      "model_name": "deeplab_contrast",
+      "bn_type": "torchbn",
+      "stride": 8,
+      "factors": [[8, 8]],
+      "loss_weights": {
+        "corr_loss": 0.01,
+        "aux_loss": 0.4,
+        "seg_loss": 1.0
+      }
+    },
+
+  "lr": {
+    "base_lr": 0.0025,
+    "cls_lr": 0.1,
+    "nbb_mult": 2.0,
+    "metric": "iters",
+    "lr_policy": "lambda_poly",
+    "step": {
+      "gamma": 0.5,
+      "step_size": 100
+    }
+  },
+
+  "val": {
+    "episodic_val": false,
+    "norm_feat": true,
+    "batch_size": 200,
+    "ckpt_used": "best"
+    },
+
+  "solver": {
+    "display_iter": 50,
+    "test_interval": 1000,
+    "max_iters": 40000
+  },
+
+  "optim": {
+    "optim_method": "sgd",
+    "adam": {
+      "betas": [0.9, 0.999],
+      "eps": 1e-08,
+      "weight_decay": 0.0001
+    },
+    "sgd": {
+      "weight_decay": 0.0005,
+      "momentum": 0.9,
+      "nesterov": false
+    }
+  },
+
+  "loss": {
+    "loss_type": "ce_loss",
+    "smoothing": true,
+    "params": {
+      "ce_reduction": "elementwise_mean",
+      "ce_weight": false,
+      "ce_ignore_index": 255,
+      "smoothing_eps": 0.1,
+      "ohem_minkeep": 100000,
+      "ohem_thresh": 0.9
+    }
+  },
+
+    "contrast": {
+      "bg_anchor": false,
+      "proj_dim": 256,
+      "temperature": 0.1,
+      "base_temperature": 0.07,
+      "max_samples": 1024,
+      "max_views": 100,
+      "stride": 8,
+      "warmup_iters": 5000,
+      "loss_weight": 0.1,
+      "use_rmi": false
+    }
+}

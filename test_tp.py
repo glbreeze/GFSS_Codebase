@@ -1,25 +1,20 @@
 # encoding:utf-8
 
 import os
-import random
 import numpy as np
 import torch
-import torch.backends.cudnn as cudnn
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.nn.parallel
 import torch.utils.data
 import torch.optim as optim
 from collections import defaultdict
-from src.dataset.dataset import get_val_loader
-from src.util import AverageMeter, batch_intersectionAndUnionGPU, get_model_dir_trans
-from src.model import get_model, CosCls
+from lib.dataset.dataset import get_val_loader
+from src.util import AverageMeter, get_model_dir_trans
+from src.model import get_model
 from src.model.base.transformer import MultiHeadAttentionOne
-from src.util import load_cfg_from_cfg_file, merge_cfg_from_list, log
+from src.util import load_cfg_from_cfg_file, merge_cfg_from_list
 import argparse
-from torch.nn.parallel import DistributedDataParallel as DDP
-import time
-from typing import Tuple
 
 # =================== get config ===================
 

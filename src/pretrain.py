@@ -1,253 +1,136 @@
 # encoding:utf-8
 
 # This code is to pretrain model backbone on the base train data
-
+#import pdb
 import os
 import yaml
+import time
 import random
-import numpy as np
-import torch
-import torch.backends.cudnn as cudnn
-import torch.nn.functional as F
-import torch.nn.parallel
-import torch.utils.data
-from tensorboardX import SummaryWriter
-from typing import Dict
-from torch import Tensor
-from src.model import get_model
-
-from .test import episodic_validate
-from .optimizer import get_optimizer, get_scheduler
-from .dataset.dataset import get_val_loader, get_train_loader
-from .util import intersectionAndUnionGPU, AverageMeter
-from .util import load_cfg_from_cfg_file, merge_cfg_from_list
-from .util import ensure_path, set_log_path, log
 import argparse
+import torch.backends.cudnn as cudnn
+import torch.utils.data
+from .trainer import Trainer
+# from tensorboardX import SummaryWriter
+
+from .util import ensure_path, set_log_path, log
+from lib.utils.tools.configer import Configer
+from lib.utils.tools.logger import Logger as Log
+
+def str2bool(v):
+    """ Usage:
+    parser.add_argument('--pretrained', type=str2bool, nargs='?', const=True,  dest='pretrained', help='Whether to use pretrained models.')
+    """
+    if v.lower() in ('yes', 'true', 't', 'y', '1'):
+        return True
+    elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+        return False
+    else:
+        raise argparse.ArgumentTypeError('Unsupported value encountered.')
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description='Training classifier weight transformer')
-    parser.add_argument('--config', type=str, required=True, help='config file')
-    parser.add_argument('--opts', default=None, nargs=argparse.REMAINDER)
-    args = parser.parse_args()
-    assert args.config is not None
-    cfg = load_cfg_from_cfg_file(args.config)
-    if args.opts is not None:
-        cfg = merge_cfg_from_list(cfg, args.opts)
-    return cfg
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--configs', default=None, type=str,
+                        dest='configs', help='The file of the hyper parameters.')
+    parser.add_argument('--phase', default='train', type=str,
+                        dest='phase', help='The phase of module.')
+    parser.add_argument('--gpu', default=[0], nargs='+', type=int,
+                        dest='gpu', help='The gpu list used.')
+    parser.add_argument('--train_split', default=0, type=int,
+                        dest='train_split', help='data split.')
 
+    # ***********  Params for model.  **********
+    parser.add_argument('--model_name', default=None, type=str,
+                        dest='network:model_name', help='The name of model.')
+    parser.add_argument('--backbone', default=None, type=str,
+                        dest='network:backbone', help='The base network of model.')
+    parser.add_argument('--bn_type', default=None, type=str,
+                        dest='network:bn_type', help='The BN type of the network.')
+    parser.add_argument('--multi_grid', default=None, nargs='+', type=int,
+                        dest='network:multi_grid', help='The multi_grid for resnet backbone.')
+    parser.add_argument('--pretrained', type=str, default=None,
+                        dest='network:pretrained', help='The path to pretrained model.')
+    parser.add_argument('--resume', default=None, type=str,
+                        dest='network:resume', help='The path of checkpoints.')
+    parser.add_argument('--resume_strict', type=str2bool, nargs='?', default=True,
+                        dest='network:resume_strict', help='Fully match keys or not.')
+    parser.add_argument('--resume_continue', type=str2bool, nargs='?', default=False,
+                        dest='network:resume_continue', help='Whether to continue training.')
+    parser.add_argument('--resume_eval_train', type=str2bool, nargs='?', default=True,
+                        dest='network:resume_train', help='Whether to validate the training set  during resume.')
+    parser.add_argument('--resume_eval_val', type=str2bool, nargs='?', default=True,
+                        dest='network:resume_val', help='Whether to validate the val set during resume.')
+    parser.add_argument('--gathered', type=str2bool, nargs='?', default=True,
+                        dest='network:gathered', help='Whether to gather the output of model.')
+    parser.add_argument('--loss_balance', type=str2bool, nargs='?', default=False,
+                        dest='network:loss_balance', help='Whether to balance GPU usage.')
 
-def main(args: argparse.Namespace) -> None:
+    # ***********  Params for solver.  **********
+    parser.add_argument('--optim_method', default=None, type=str,
+                        dest='optim:optim_method', help='The optim method that used.')
+    parser.add_argument('--base_lr', default=None, type=float,
+                        dest='lr:base_lr', help='The learning rate.')
+    parser.add_argument('--nbb_mult', default=1.0, type=float,
+                        dest='lr:nbb_mult', help='The not backbone mult ratio of learning rate.')
+    parser.add_argument('--lr_policy', default=None, type=str,
+                        dest='lr:lr_policy', help='The policy of lr during training.')
+    parser.add_argument('--loss_type', default=None, type=str,
+                        dest='loss:loss_type', help='The loss type of the network.')
+    parser.add_argument('--is_warm', type=str2bool, nargs='?', default=False,
+                        dest='lr:is_warm', help='Whether to warm training.')
 
-    sv_path = 'pretrain_{}/{}{}/split{}_shot{}/{}'.format(
-        args.train_name, args.arch, args.layers, args.train_split, args.shot, args.exp_name)
-    sv_path = os.path.join('./results', sv_path)
-    ensure_path(sv_path)
-    set_log_path(path=sv_path)
-    log('save_path {}'.format(sv_path))
-    yaml.dump(args, open(os.path.join(sv_path, 'config.yaml'), 'w'))
+    # ***********  Params for display.  **********
+    parser.add_argument('--max_epoch', default=None, type=int,
+                        dest='solver:max_epoch', help='The max epoch of training.')
+    parser.add_argument('--max_iters', default=None, type=int,
+                        dest='solver:max_iters', help='The max iters of training.')
+    parser.add_argument('--display_iter', default=None, type=int,
+                        dest='solver:display_iter', help='The display iteration of train logs.')
+    parser.add_argument('--test_interval', default=None, type=int,
+                        dest='solver:test_interval', help='The test interval of validation.')
 
-    log(args)
-    writer = SummaryWriter(os.path.join(sv_path, 'model'))
+    # ***********  Params for env.  **********
+    parser.add_argument('--seed', default=304, type=int, help='manual seed')
+    parser.add_argument('--cudnn', type=str2bool, nargs='?', default=True, help='Use CUDNN.')
 
-    if args.manual_seed is not None:
-        cudnn.benchmark = False  # 为True的话可以对网络结构固定、网络的输入形状不变的 模型提速
-        cudnn.deterministic = True
-        random.seed(args.manual_seed)
-        np.random.seed(args.manual_seed)
-        torch.manual_seed(args.manual_seed)
-        torch.cuda.manual_seed(args.manual_seed)
-        torch.cuda.manual_seed_all(args.manual_seed)
+    # ***********  Params for distributed training.  **********
+    parser.add_argument('--local_rank', type=int, default=-1, dest='local_rank', help='local rank of current process')
+    parser.add_argument('--distributed', action='store_true', dest='distributed', help='Use multi-processing training.')
+    parser.add_argument('--use_ground_truth', action='store_true', dest='use_ground_truth',
+                        help='Use ground truth for training.')
 
-    # ====== Model + Optimizer ======
-    model = get_model(args).cuda()
-    modules_ori = [model.layer0, model.layer1, model.layer2, model.layer3, model.layer4]
-    modules_new = [model.ppm, model.bottleneck, model.classifier]
+    parser.add_argument('REMAIN', nargs='*')
 
-    params_list = []
-    for module in modules_ori:
-        params_list.append(dict(params=module.parameters(), lr=args.lr))
-    for module in modules_new:
-        params_list.append(dict(params=module.parameters(), lr=args.lr * args.scale_lr))
-    optimizer = get_optimizer(args, params_list)
-
-    # ========== Validation ==================
-    validate_fn = episodic_validate if args.episodic_val else standard_validate
-    log(f"==> Using {'episodic' if args.episodic_val else 'standard'} validation\n")
-
-    # ========= Data  ==========
-    train_loader, train_sampler = get_train_loader(args, episodic=False)
-    val_loader, _ = get_val_loader(args, episodic=args.episodic_val)  # mode='train' means that we will validate on images from validation set, but with the bases classes
-
-    # ========== Scheduler  ================
-    scheduler = get_scheduler(args, optimizer, len(train_loader))
-
-    # ====== Metrics initialization ======
-    max_val_mIoU = 0.
-    iter_per_epoch = len(train_loader)
-    log_iter = int(iter_per_epoch / args.log_freq) + 1
-
-    metrics: Dict[str, Tensor] = {"val_mIou": torch.zeros((args.epochs, 1)).type(torch.float32),
-                                  "val_loss": torch.zeros((args.epochs, 1)).type(torch.float32),
-                                  "train_mIou": torch.zeros((args.epochs, log_iter)).type(torch.float32),
-                                  "train_loss": torch.zeros((args.epochs, log_iter)).type(torch.float32),
-                                  }
-
-    # ====== Training  ======
-    log('==> Start training')
-    for epoch in range(args.epochs):
-
-        loss_meter = AverageMeter()
-        iterable_train_loader = iter(train_loader)
-
-        for i in range(1, iter_per_epoch+1):
-            model.train()
-
-            images, gt = iterable_train_loader.next()  # q: [1, 3, 473, 473], s: [1, 1, 3, 473, 473]
-            if torch.cuda.is_available():
-                images = images.cuda()  # [1, 1, 3, h, w]
-                gt = gt.cuda()  # [1, 1, h, w]
-
-            loss = compute_loss(args=args, model=model, images=images, targets=gt.long(), num_classes=args.num_classes_tr)
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-
-            if args.scheduler == 'cosine':
-                scheduler.step()
-
-            if i % args.log_freq == 0:
-                model.eval()
-                logits = model(images)
-                intersection, union, target = intersectionAndUnionGPU(logits.argmax(1), gt, args.num_classes_tr, 255)  # gt [B, 473, 473]
-
-                allAcc = (intersection.sum() / (target.sum() + 1e-10))  # scalar
-                mAcc = (intersection / (target + 1e-10)).mean()
-                mIoU = (intersection / (union + 1e-10)).mean()
-                loss_meter.update(loss.item())
-
-                log('iter {}/{}: loss {:.2f}, running loss {:.2f}, Acc {:.4f}, mAcc {:.4f}, mIoU {:.4f}'.format(
-                    i, epoch, loss.item(), loss_meter.avg, allAcc, mAcc, mIoU))
-
-        log('============ Epoch {}=============: running loss {:.2f}'.format(epoch, loss_meter.avg))
-        writer.add_scalar('train_loss', loss_meter.avg, epoch)
-        writer.add_scalar("mean_iou/train", mIoU, epoch)
-        writer.add_scalar("pixel accuracy/train", allAcc, epoch)
-        loss_meter.reset()
-
-        # pdb.set_trace()
-        val_Iou, val_loss = validate_fn(args=args, val_loader=val_loader, model=model, use_callback=False)
-        writer.add_scalar("mean_iou/val", val_Iou, epoch)
-        writer.add_scalar("pixel accuracy/val", val_loss, epoch)
-
-        # Model selection
-        if val_Iou.item() > max_val_mIoU:
-            max_val_mIoU = val_Iou.item()
-
-            filename = os.path.join(sv_path, f'best.pth')
-            if args.save_models:
-                log('=> Max_mIoU = {:.3f}, Saving checkpoint to: {}'.format(max_val_mIoU, filename))
-                torch.save({'epoch': epoch, 'state_dict': model.state_dict(),
-                            'optimizer': optimizer.state_dict()}, filename)
-
-    if args.save_models:  # 所有跑完，存last epoch
-        filename = os.path.join(sv_path, 'final.pth')
-        torch.save( {'epoch': args.epochs, 'state_dict': model.state_dict(),
-                     'optimizer': optimizer.state_dict()}, filename )
-
-
-def cross_entropy(logits: torch.tensor, one_hot: torch.tensor, targets: torch.tensor, mean_reduce: bool = True,
-                  ignore_index: int = 255) -> torch.tensor:
-    """
-    inputs: one_hot  : shape [batch_size, num_classes, h, w]
-            logits : shape [batch_size, num_classes, h, w]
-            targets : shape [batch_size, h, w]
-    returns:loss: shape [batch_size] or [] depending on mean_reduce
-    """
-    assert logits.size() == one_hot.size()
-    log_prb = F.log_softmax(logits, dim=1)
-    non_pad_mask = targets.ne(ignore_index)
-    loss = -(one_hot * log_prb).sum(dim=1)
-    loss = loss.masked_select(non_pad_mask)
-    if mean_reduce:
-        return loss.mean()  # average later
-    else:
-        return loss
-
-
-def compute_loss(args, model, images, targets, num_classes):
-    """
-    inputs:  images  : shape [batch_size, C, h, w]
-             logits : shape [batch_size, num_classes, h, w]
-             targets : shape [batch_size, h, w]
-    returns: loss: shape []
-             logits: shape [batch_size]
-    """
-    batch, h, w = targets.size()
-    one_hot_mask = torch.zeros(batch, num_classes, h, w).cuda()
-    new_target = targets.clone().unsqueeze(1)
-    new_target[new_target == 255] = 0
-
-    one_hot_mask.scatter_(1, new_target, 1).long()
-    if args.smoothing:
-        eps = 0.1
-        one_hot = one_hot_mask * (1 - eps) + (1 - one_hot_mask) * eps / (num_classes - 1)
-    else:
-        one_hot = one_hot_mask  # [batch_size, num_classes, h, w]
-
-    if args.mixup:
-        alpha = 0.2
-        lam = np.random.beta(alpha, alpha)
-        rand_index = torch.randperm(images.size()[0]).cuda()
-        one_hot_a = one_hot
-        targets_a = targets
-
-        one_hot_b = one_hot[rand_index]
-        target_b = targets[rand_index]
-        mixed_images = lam * images + (1 - lam) * images[rand_index]
-
-        logits = model(mixed_images)
-        loss = cross_entropy(logits, one_hot_a, targets_a) * lam  \
-            + cross_entropy(logits, one_hot_b, target_b) * (1. - lam)
-    else:
-        logits = model(images)
-        loss = cross_entropy(logits, one_hot, targets)
-    return loss
-
-
-def standard_validate(args, val_loader, model, use_callback):
-
-    loss_meter = AverageMeter()
-    intersections = torch.zeros(args.num_classes_tr).cuda()
-    unions = torch.zeros(args.num_classes_tr).cuda()
-
-    model.eval()
-    for i, (images, gt) in enumerate(val_loader):
-
-        if torch.cuda.is_available():
-            images = images.cuda()  # [1, 1, 3, h, w]
-            gt = gt.cuda()          # [1, 1, h, w]
-
-        with torch.no_grad():
-            logits = model(images).detach()
-            loss_fn = torch.nn.CrossEntropyLoss(ignore_index=255)
-            loss = loss_fn(logits, gt)
-            loss_meter.update(loss.item())
-
-        intersection, union, target = intersectionAndUnionGPU(logits.argmax(1), gt, args.num_classes_tr, 255)  # gt [B, 473, 473]
-        intersections += intersection  # [16]
-        unions += union                # [16]
-
-    mIoU = (intersections / (unions + 1e-10)).mean()
-    acc = intersections.sum() / unions.sum()
-    log(f'Testing results: running loss {loss_meter.avg:.2f}, Acc {acc:.4f}, mIoU {mIoU:.4f}\n')
-
-    return mIoU, loss_meter.avg
+    args_parser = parser.parse_args()
+    return args_parser
 
 
 if __name__ == "__main__":
-    args = parse_args()
+    args_parser = parse_args()
 
-    world_size = len(args.gpus)
-    args.distributed = (world_size > 1)
-    main(args)
+    from lib.utils.distributed import handle_distributed
+    handle_distributed(args_parser, os.path.expanduser(os.path.abspath(__file__)))
+
+    if args_parser.seed is not None:
+        random.seed(args_parser.seed)
+        torch.manual_seed(args_parser.seed)
+
+    cudnn.enabled = True
+    cudnn.benchmark = args_parser.cudnn
+
+    configer = Configer(args_parser=args_parser)
+    project_dir = os.path.dirname(os.path.realpath(__file__))
+    configer.add(['project_dir'], project_dir)
+
+    sv_path = './results/pretrain_{0}/split{1}/{2}/{3}'.format(
+        configer.get('train_name'), configer.get('train_split'), configer.get('network','model_name'), configer.get('exp_name'))
+    ensure_path(sv_path)
+    configer.add(['sv_path'], sv_path)
+
+    log_fname = '{}_{}.txt'.format('log', time.strftime("%Y-%m-%d_%X", time.localtime()))
+    Log.init(logfile_level='info', stdout_level='info',
+             log_file=os.path.join(sv_path, log_fname),
+             rewrite=True)
+
+    model = Trainer(configer)             # ============================================================== define model
+    model.train()

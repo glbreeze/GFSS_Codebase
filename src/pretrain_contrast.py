@@ -8,7 +8,6 @@ import random
 import numpy as np
 import torch
 import torch.backends.cudnn as cudnn
-import torch.nn.functional as F
 import torch.nn.parallel
 import torch.utils.data
 from tensorboardX import SummaryWriter
@@ -19,10 +18,12 @@ from src.model import get_model
 from .test import episodic_validate
 from .loss import ContrastCELoss
 from .optimizer import get_optimizer, get_scheduler
-from .dataset.dataset import get_val_loader, get_train_loader
 from .util import intersectionAndUnionGPU, AverageMeter
 from .util import load_cfg_from_cfg_file, merge_cfg_from_list
 from .util import ensure_path, set_log_path, log
+
+from lib.dataset.dataset import get_val_loader, get_train_loader
+from lib.models.model_manager import ModelManager
 import argparse
 
 
@@ -61,7 +62,8 @@ def main(args: argparse.Namespace) -> None:
         torch.cuda.manual_seed_all(args.manual_seed)
 
     # ====== Model + Optimizer ======
-    model = get_model(args).cuda()
+    model_manager = ModelManager(configer=args)  # model_name
+    model = model_manager.semantic_segmentor().cuda()
     modules_ori = [model.layer0, model.layer1, model.layer2, model.layer3, model.layer4]
     modules_new = [model.ppm, model.bottleneck, model.classifier]
     if args.contrast:
