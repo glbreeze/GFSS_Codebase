@@ -72,7 +72,7 @@ class Trainer(object):
         self.train_loader, _ = get_train_loader(self.configer, episodic=False)
         self.val_loader, _ = get_val_loader(self.configer, episodic=self.configer.get('val', 'episodic_val'))
         self.configer.add(['solver', 'max_iters'], self.configer.get('solver','max_epoch')*len(self.train_loader))
-        Log.info('total iterations {}'.format(self.configer.get('max_iters')))
+        Log.info('total iterations {}'.format(self.configer.get('solver', 'max_iters')))
 
         params_group = self._get_parameters()
         self.optimizer, self.scheduler = self.optim_scheduler.init_optimizer(params_group)

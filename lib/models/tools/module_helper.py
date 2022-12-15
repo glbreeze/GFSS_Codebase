@@ -126,7 +126,7 @@ class ModuleHelper(object):
             return model
 
         if all_match:
-            Log.info('Loading pretrained model:{}'.format(pretrained))
+            Log.info('Loading pretrained model all match:{}'.format(pretrained))
             pretrained_dict = torch.load(pretrained, map_location=lambda storage, loc: storage)
             model_dict = model.state_dict()
             load_dict = dict()
