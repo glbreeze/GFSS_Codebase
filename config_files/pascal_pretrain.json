@@ -68,14 +68,14 @@
   "val": {
     "episodic_val": false,
     "norm_feat": true,
-    "batch_size": 200,
+    "batch_size": 50,
     "ckpt_used": "best"
     },
 
   "solver": {
     "display_iter": 50,
     "test_interval": 1000,
-    "max_iters": 40000
+    "max_epoch": 100
   },
 
   "optim": {

@@ -69,11 +69,13 @@ class Trainer(object):
 
         self.seg_net = self.module_runner.load_net(self.seg_net)
 
-        params_group = self._get_parameters()
-        self.optimizer, self.scheduler = self.optim_scheduler.init_optimizer(params_group)
-
         self.train_loader, _ = get_train_loader(self.configer, episodic=False)
         self.val_loader, _ = get_val_loader(self.configer, episodic=self.configer.get('val', 'episodic_val'))
+        self.configer.add(['solver', 'max_iters'], self.configer.get('solver','max_epoch')*len(self.train_loader))
+        Log.info('total iterations {}'.format(self.configer.get('max_iters')))
+
+        params_group = self._get_parameters()
+        self.optimizer, self.scheduler = self.optim_scheduler.init_optimizer(params_group)
 
         self.pixel_loss = self.loss_manager.get_seg_loss()
         if is_distributed():
@@ -160,16 +162,13 @@ class Trainer(object):
 
             # Print the log info & reset the states.
             if self.configer.get('iters') % self.configer.get('solver', 'display_iter') == 0 and (not is_distributed() or get_rank() == 0):
-                Log.info('Train Epoch: {0}\tTrain Iteration: {1}\t'
-                         'Time {batch_time.sum:.3f}s / {2}iters, ({batch_time.avg:.3f})\t'
-                         'Learning rate = {3}\tLoss = {loss.val:.4f} (ave = {loss.avg:.4f})\n'.format(
+                Log.info('Train Epoch: {0}, Train Iteration: {1}, '
+                         'Time {batch_time.sum:.3f}s/{2}iters, ({batch_time.avg:.3f}) '
+                         'Learning rate = {3}, Loss = {loss.val:.4f} (ave = {loss.avg:.4f})\n'.format(
                     self.configer.get('epoch'), self.configer.get('iters'), self.configer.get('solver', 'display_iter'),
-                    self.module_runner.get_lr(self.optimizer), batch_time=self.batch_time, loss=self.train_losses))
+                    [round(e, 6) for e in self.module_runner.get_lr(self.optimizer)], batch_time=self.batch_time, loss=self.train_losses))
                 self.batch_time.reset()
                 self.train_losses.reset()
-
-            if self.configer.get('iters') == self.configer.get('solver', 'max_iters'):
-                break
 
             # Check to val the current model.
             if self.configer.get('iters') % self.configer.get('solver', 'test_interval') == 0:
@@ -190,7 +189,7 @@ class Trainer(object):
                 self.__val(data_loader=self.data_loader.get_valloader(dataset='train'))
                 return
 
-        while self.configer.get('iters') < self.configer.get('solver', 'max_iters'):
+        while self.configer.get('epoch') < self.configer.get('solver', 'max_epoch'):
             self.__train()
 
         # use swa to average the model
@@ -198,7 +197,7 @@ class Trainer(object):
             self.optimizer.swap_swa_sgd()
             self.optimizer.bn_update(self.train_loader, self.seg_net)
 
-        self.__val(data_loader=self.data_loader.get_valloader(dataset='val'))
+        self.standard_validate()
 
     def standard_validate(self, val_loader=None):
         self.seg_net.eval()
@@ -234,7 +233,7 @@ class Trainer(object):
         self.configer.update(['performance'], mIoU)
         self.module_runner.save_net(self.seg_net, save_mode='val_loss')
         self.module_runner.save_net(self.seg_net, save_mode='performance')
-        Log.info(f'Test Time {self.batch_time.avg:.2f}s/{self.batch_time.sum:.2f}s: '
+        Log.info(f'====>Test Time {self.batch_time.avg:.2f}s/{self.batch_time.sum:.2f}s: '
                  f'running loss {self.val_losses.avg:.2f}, Acc {acc:.4f}, mIoU {mIoU:.4f}\n')
 
         self.seg_net.train()
