@@ -7,7 +7,7 @@
     "manual_seed": 42,
     "method": "fcn_segmentor",
     "gpu": null,
-    "exp_name": "deeplab_r50",
+    "exp_name": "deeplab_r50_contrast",
 
     "data": {
       "data_root": "../dataset/VOCdevkit/VOC2012",
@@ -93,7 +93,7 @@
   },
 
   "loss": {
-    "loss_type": "ce_loss",
+    "loss_type": "contrast_ce_loss",
     "smoothing": true,
     "params": {
       "ce_reduction": "elementwise_mean",

@@ -153,7 +153,6 @@ def weighted_dice_loss(prediction, target_seg, weighted_val=1.0, reduction="sum"
     return loss
 
 
-
 class FSCERMILoss(nn.Module):
     def __init__(self, configer=None):
         super(FSCERMILoss, self).__init__()
