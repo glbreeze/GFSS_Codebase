@@ -14,6 +14,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from collections import OrderedDict
 from lib.models.backbones.backbone_selector import BackboneSelector
 from lib.models.tools.module_helper import ModuleHelper
 from lib.models.modules.projection import ProjectionHead
@@ -34,12 +35,12 @@ class HRNet_W48(nn.Module):
 
         # extra added layers
         in_channels = 720  # 48 + 96 + 192 + 384
-        self.cls_head = nn.Sequential(
-            nn.Conv2d(in_channels, in_channels, kernel_size=3, stride=1, padding=1),
-            ModuleHelper.BNReLU(in_channels, bn_type=self.configer.get('network', 'bn_type')),
-            nn.Dropout2d(0.10),
-            nn.Conv2d(in_channels, self.num_classes, kernel_size=1, stride=1, padding=0, bias=False)
-        )
+        self.classifier = nn.Sequential(OrderedDict([
+            ('conv1', nn.Conv2d(in_channels, in_channels, kernel_size=3, stride=1, padding=1)),
+            ('bn1', ModuleHelper.BNReLU(in_channels, bn_type=self.configer.get('network', 'bn_type'))),
+            ('drop1', nn.Dropout2d(0.10)),
+            ('cls', nn.Conv2d(in_channels, self.num_classes, kernel_size=1, stride=1, padding=0, bias=False))
+        ]))
 
     def forward(self, x_):
         x = self.backbone(x_)

@@ -239,10 +239,7 @@ class EpisodicData(Dataset):
         support_label_path_list = []
         support_idx_list = []
 
-        if self.random_shot:
-            shot = random.randint(1, self.shot)
-        else:
-            shot = self.shot
+        shot = self.shot
 
         for k in range(shot):
             support_idx = random.randint(1, num_file) - 1

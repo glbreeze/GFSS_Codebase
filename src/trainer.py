@@ -12,9 +12,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import copy
+import numpy as np
 import torch.nn.parallel
 import torch.utils.data
 import torch.nn.functional as F
+from torch import nn
+from collections import defaultdict
+from lib.loss.loss_helper import DiceLoss
 
 from lib.dataset.dataset import get_val_loader, get_train_loader
 from .util import intersectionAndUnionGPU, AverageMeter, get_model_dir_trans
@@ -172,7 +177,10 @@ class Trainer(object):
 
             # Check to val the current model.
             if self.configer.get('iters') % self.configer.get('solver', 'test_interval') == 0:
-                val_Iou = self.standard_validate()
+                if self.configer.get('val','episodic_val'):
+                    val_Iou = self.episodic_validate()
+                else:
+                    val_Iou = self.standard_validate()
 
         self.configer.plus_one('epoch')
         if self.configer.get('lr', 'metric') != 'iters':
@@ -241,6 +249,81 @@ class Trainer(object):
 
         self.batch_time.reset()
         self.val_losses.reset()
+
+        return mIoU
+
+    def episodic_validate(self):
+        start_time = time.time()
+
+        cls_intersection = defaultdict(int)  # Default value is 0
+        cls_union = defaultdict(int)
+        IoU = defaultdict(float)
+
+        self.seg_net.eval()
+        iter_num = 0
+        for e in range(self.configer.get('val', 'val_num')):
+            iter_num += 1
+            try:
+                q_img, q_label, s_img, s_label, subcls, spt_oris, qry_oris = iter_loader.next()
+            except:
+                iter_loader = iter(self.val_loader)
+                q_img, q_label, s_img, s_label, subcls, spt_oris, qry_oris = iter_loader.next()
+            if torch.cuda.is_available():
+                s_img = s_img.cuda()
+                s_label = s_label.cuda()
+                q_img = q_img.cuda()
+                q_label = q_label.cuda()
+
+            # ====== Phase 1: Train a new binary classifier on support samples. ======
+            s_img = s_img.squeeze(0)  # [n_shots, 3, img_size, img_size]
+            s_label = s_label.squeeze(0).long()  # [n_shots, img_size, img_size]
+            with torch.no_grad():
+                s_feat = self.seg_net(s_img)['h']
+                q_feat = self.seg_net(q_img)['h']
+
+            classifier = copy.deepcopy(self.seg_net.classifier)
+            classifier.eval()  # freeze local params in BN layer
+            classifier.cls = nn.Conv2d(512, 2, kernel_size=1, stride=1, bias=True)
+            optimizer = torch.optim.SGD(classifier.cls.parameters(), lr=self.configer.get('adapt', 'cls_lr'))
+            criterion = DiceLoss()
+
+            # fine-tune classifier
+            for index in range(self.configer.get('adapt', 'adapt_iter')):
+                pred_s_label = classifier(s_feat)  # [n_shot, 2(cls), 60, 60]
+                pred_s_label = F.interpolate(pred_s_label, size=s_label.size()[1:], mode='bilinear', align_corners=True)
+                s_loss = criterion(pred_s_label, s_label)  # pred_label: [n_shot, 2, 473, 473], label [n_shot, 473, 473]
+                optimizer.zero_grad()
+                s_loss.backward()
+                optimizer.step()
+            # ====== Phase 2: Update query score using attention. ======
+            with torch.no_grad():
+                pred_q = classifier(q_feat)
+                pred_q = F.interpolate(pred_q, size=q_label.shape[1:], mode='bilinear', align_corners=True)
+
+            # IoU and loss
+            curr_cls = subcls[0].item()  # 当前episode所关注的cls
+
+            intersection, union, target = intersectionAndUnionGPU(pred_q.argmax(1), q_label, 2, 255)
+            intersection, union = intersection.cpu(), union.cpu()
+            cls_intersection[curr_cls] += intersection[1]  # only consider the FG
+            cls_union[curr_cls] += union[1]  # only consider the FG
+            IoU[curr_cls] = cls_intersection[curr_cls] / (cls_union[curr_cls] + 1e-10)  # cls wise IoU
+
+            criterion_standard = nn.CrossEntropyLoss(ignore_index=255)
+            loss = criterion_standard(pred_q, q_label)
+            self.val_losses.update(loss.item(), self.configer.get('val', 'batch_size'))
+
+            if (iter_num % 500 == 0):
+                mIoU = np.mean(list(IoU.values()))  # mIoU across cls
+                Log.info('==> Test: [{}/{}] mIoU {:.4f} Loss {loss_meter.val:.4f} ({loss_meter.avg:.4f}) '.format(
+                        iter_num, self.configer.get('val', 'val_num'), mIoU, loss_meter=self.val_losses))
+
+        runtime = time.time() - start_time
+        mIoU = np.mean(list(IoU.values()))  # IoU: dict{cls: cls-wise IoU}
+        msg = '----------- Val result: mIoU {:.4f} | time used {:.1f}m -----------\n'.format(mIoU, runtime / 60)
+        for class_ in cls_union:
+            msg += "\tClass {} : {:.4f} for pred\n".format(class_, IoU[class_])
+        Log.info(msg)
 
         return mIoU
 

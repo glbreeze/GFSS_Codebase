@@ -9,6 +9,7 @@
 import torch
 from torch import nn
 from torch.nn import functional as F
+from collections import OrderedDict
 
 from lib.models.tools.module_helper import ModuleHelper
 
@@ -154,19 +155,16 @@ class DeepLabHead(nn.Module):
     def __init__(self, num_classes, bn_type=None):
         super(DeepLabHead, self).__init__()
         # auxiliary loss
-        self.layer_dsn = nn.Sequential(nn.Conv2d(1024, 256, kernel_size=3,
-                                                 stride=1, padding=1),
+        self.layer_dsn = nn.Sequential(nn.Conv2d(1024, 256, kernel_size=3, stride=1, padding=1),
                                        ModuleHelper.BNReLU(256, bn_type=bn_type),
-                                       nn.Conv2d(256, num_classes,
-                                                 kernel_size=1, stride=1,
-                                                 padding=0, bias=True))
+                                       nn.Conv2d(256, num_classes, kernel_size=1, stride=1, padding=0, bias=True))
         # main pipeline
         self.layer_aspp = ASPPModule(2048, 512, bn_type=bn_type)
-        self.refine = nn.Sequential(nn.Conv2d(512, 512, kernel_size=3,
-                                              padding=1, stride=1, bias=False),
-                                    ModuleHelper.BatchNorm2d(bn_type=bn_type)(512),
-                                    nn.Conv2d(512, num_classes, kernel_size=1,
-                                              stride=1, bias=True))
+        self.classifier = nn.Sequential(OrderedDict([
+          ('conv1', nn.Conv2d( 512, 512, kernel_size=3, padding=1, stride=1, bias=False)),
+          ('bn1', ModuleHelper.BatchNorm2d(bn_type=bn_type)(512)),
+          ('cls', nn.Conv2d(512, num_classes, kernel_size=1, stride=1, bias=True)),
+        ]))
 
     def forward(self, x):
         # auxiliary supervision
@@ -174,7 +172,7 @@ class DeepLabHead(nn.Module):
         # aspp module
         x_aspp = self.layer_aspp(x[3])
         # refine module
-        x_seg = self.refine(x_aspp)
+        x_seg = self.classifier(x_aspp)
 
         return [x_seg, x_dsn]
 

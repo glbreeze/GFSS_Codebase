@@ -73,9 +73,9 @@ class FSCELoss(nn.Module):
         batch, h, w = targets.size()
         one_hot_mask = torch.zeros(batch, self.num_classes, h, w, device=targets.device)  # [B, 16, 473, 473]
         new_target = targets.clone().unsqueeze(1)
-        new_target[new_target == 255] = 0          # [8, 1, 473, 473]
+        new_target[new_target == 255] = 0                  # [8, 1, 473, 473]
+        one_hot_mask.scatter_(1, new_target, 1).long()     # ignore pixel set to BG????
 
-        one_hot_mask.scatter_(1, new_target, 1).long()
         if self.configer.exists('loss','smoothing'):
             eps = self.configer.get('loss', 'params').get("smoothing_eps", 0.1)
             one_hot = one_hot_mask * (1 - eps) + (1 - one_hot_mask) * eps / (self.num_classes - 1)
@@ -84,6 +84,39 @@ class FSCELoss(nn.Module):
 
         loss = cross_entropy(logits, one_hot, targets, ignore_index=self.ignore_index)
         return loss
+
+
+class DiceLoss(nn.Module):
+    def __init__(self):
+        super(DiceLoss, self).__init__()
+
+    def dice_loss(gt, logits, eps=1e-7):
+        """Computes the Sørensen–Dice loss.
+        Note that PyTorch optimizers minimize a loss. In this case, we would like to maximize the dice loss so we
+        return the negated dice loss.
+        Args:
+            gt: a tensor of shape [B, 1, H, W].
+            logits: a tensor of shape [B, C, H, W]. Corresponds to the raw output or logits of the model.
+            eps: added to the denominator for numerical stability.
+        Returns:
+            dice_loss: the Sørensen–Dice loss.
+        """
+        if isinstance(logits, dict):
+            logits = logits['seg']
+        logits = F.interpolate(logits, size=gt.shape[-2:], mode='bilinear', align_corners=True)
+        probas = F.softmax(logits, dim=1)  # [8, 16, 473, 473]
+
+        num_classes = logits.shape[1]
+        gt[gt == 255] = num_classes
+        true_1_hot = torch.eye(num_classes+1, device=gt.device)[gt.squeeze(1)]  # [8, 473, 473, 17]
+        true_1_hot = true_1_hot[:, :, :, :num_classes]        # get rid of ignored pixels
+        true_1_hot = true_1_hot.permute(0, 3, 1, 2).float()   # [8, 16, 473, 473]
+        true_1_hot = true_1_hot.type(logits.type())
+
+        intersection = torch.sum(probas * true_1_hot, dim=(0, 2, 3))   # [16]
+        cardinality = torch.sum(probas + true_1_hot, dim=(0, 2, 3))    # [16]
+        dice_loss = (2. * intersection / (cardinality + eps)).mean()
+        return 1 - dice_loss
 
 
 class WTCELoss(nn.Module):

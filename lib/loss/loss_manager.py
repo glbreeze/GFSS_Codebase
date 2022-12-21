@@ -13,7 +13,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from lib.loss.loss_helper import FSAuxOhemCELoss, FSOhemCELoss, FSRMILoss
+from lib.loss.loss_helper import FSAuxOhemCELoss, FSOhemCELoss, FSRMILoss, DiceLoss
 from lib.loss.loss_helper import FSCELoss, FSAuxCELoss, FSAuxRMILoss, FSCELOVASZLoss, MSFSAuxRMILoss, FSAuxCELossDSN
 from lib.loss.loss_helper import SegFixLoss
 from lib.loss.rmi_loss import RMILoss
@@ -26,6 +26,7 @@ from lib.utils.distributed import is_distributed
 
 SEG_LOSS_DICT = {
     'ce_loss': FSCELoss,
+    'dice_loss': DiceLoss,
     'contrast_ce_loss': ContrastCELoss,
     'fs_ohemce_loss': FSOhemCELoss,
     'fs_auxce_loss': FSAuxCELoss,

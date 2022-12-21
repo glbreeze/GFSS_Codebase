@@ -1,44 +1,43 @@
 
 import os
 import argparse
+import numpy as np
 from collections import defaultdict
 from src.util import AverageMeter
 
 
 parser = argparse.ArgumentParser(description='Summarize log')
 parser.add_argument('--fpath', type=str, required=True, help='path of log file')
-parser.add_argument('--start', type=int, default=0, help='where to start summarizing')
-parser.add_argument('--end', type=int, default=-1, help='where to end summarizing')
 args = parser.parse_args()
 
-fpath = './results/' + args.fpath + '/log.txt'
+for file in os.listdir(args.fpath):
+    if file.endswith('.txt'):
+        fname = file
+fpath = os.path.join(args.fpath, fname)
 assert os.path.exists(fpath), 'can not find the file'
 
-eval_cnt =0
-dt = defaultdict(AverageMeter)
-max_iou = (0.0, 0.0, 0.0)
+eval_cnt = 0
+iou_lst = []
+avg_iou_lst = []
 
 f = open(fpath, 'r')
 line = f.readline()
 while line:
-
-    if "mIoU---Val result" in line:
+    if "====>Test" in line:
         eval_cnt += 1
-        if eval_cnt >= args.start:
-            print(line)
-            mIoU0, mIoU1, mIoU = float(line[25:31]), float(line[39:45]), float(line[51:57])
-            dt['iou0'].update(mIoU0)
-            dt['iou1'].update(mIoU1)
-            dt['iou'].update(mIoU)
-            if mIoU>max_iou[-1]:
-                max_iou = (mIoU0, mIoU1, mIoU)
 
-    if args.end >= 1 and eval_cnt>=args.end:
-        break
+        iou = line.split()[-1]
+        iou_lst.append(float(iou))
+
+        new_line = line[30:].strip() + ', avg iou {}, max iou {},'.format(np.mean(iou_lst), np.max(iou_lst))
+
+        if eval_cnt>=4:
+            smt_iou = np.mean(iou[-4:])
+            avg_iou_lst.append(smt_iou)
+            new_line = new_line + 'smt iou {}, max smt iou {}'.format(smt_iou, np.max(avg_iou_lst))
+
+        print(new_line)
 
     line = f.readline()
 
 f.close()
-
-print(f"avg mIOU0: {dt['iou0'].avg:.4f}, mIOU1: {dt['iou1'].avg:.4f}, mIOU: {dt['iou'].avg:.4f}, runs: {dt['iou0'].count}\n")
-print('max iou ' + str(max_iou))

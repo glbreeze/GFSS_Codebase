@@ -1,5 +1,5 @@
 {
-    "train_name": "pascal",
+    "train_name": "coco",
     "test_name": "default",
     "train_split" : 0,
     "test_split": "default",
@@ -10,12 +10,12 @@
     "exp_name": "deeplab_r50_contrast",
 
     "data": {
-      "data_root": "../dataset/VOCdevkit/VOC2012",
-      "train_list": "lists/pascal/train.txt",
-      "val_list": "lists/pascal/val.txt",
-      "num_classes": 16,
-      "num_classes_val": 5,
-      "use_split_coco": false,
+      "data_root": "/coco/",
+      "train_list": "lists/coco/train.txt",
+      "val_list": "lists/coco/val.txt",
+      "num_classes": 61,
+      "num_classes_val": 20,
+      "use_split_coco": true,
       "workers": 2,
       "image_size": 473,
       "padding_label": 255,
@@ -32,8 +32,8 @@
    "train": {
       "ckpt_path": "checkpoints/",
       "batch_size": 8,
-      "epochs": 100,
-      "log_freq" : 50,
+      "epochs": 20,
+      "log_freq" : 200,
       "save_models": true
     },
 
