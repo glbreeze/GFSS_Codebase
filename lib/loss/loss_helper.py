@@ -90,7 +90,7 @@ class DiceLoss(nn.Module):
     def __init__(self):
         super(DiceLoss, self).__init__()
 
-    def dice_loss(gt, logits, eps=1e-7):
+    def forward(self, gt, logits, eps=1e-7):
         """Computes the Sørensen–Dice loss.
         Note that PyTorch optimizers minimize a loss. In this case, we would like to maximize the dice loss so we
         return the negated dice loss.

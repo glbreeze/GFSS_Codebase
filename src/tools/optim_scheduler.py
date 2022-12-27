@@ -102,19 +102,19 @@ class OptimScheduler(object):
             if os.environ.get('lambda_poly_power'):
                 _lambda_poly_power = float(os.environ.get('lambda_poly_power'))
                 Log.info('Use lambda_poly policy with power {}'.format(_lambda_poly_power))
-                lambda_poly = lambda iters: pow((1.0 - iters / self.configer.get('solver', 'max_iters')),
+                lambda_poly = lambda iters: pow((1.0 - iters / self.configer.get('train', 'max_iters')),
                                                 _lambda_poly_power)
             elif self.configer.exists('lr', 'lambda_poly'):
                 Log.info('Use lambda_poly policy with power {}'.format(self.configer.get('lr', 'lambda_poly')['power']))
-                lambda_poly = lambda iters: pow((1.0 - iters / self.configer.get('solver', 'max_iters')),
+                lambda_poly = lambda iters: pow((1.0 - iters / self.configer.get('train', 'max_iters')),
                                                 self.configer.get('lr', 'lambda_poly')['power'])
             else:
                 Log.info('Use lambda_poly policy with default power 0.9')
-                lambda_poly = lambda iters: pow((1.0 - iters / self.configer.get('solver', 'max_iters')), 0.9)
+                lambda_poly = lambda iters: pow((1.0 - iters / self.configer.get('train', 'max_iters')), 0.9)
             scheduler = lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda_poly)
 
         elif policy == 'lambda_cosine':
-            lambda_cosine = lambda iters: (math.cos(math.pi * iters / self.configer.get('solver', 'max_iters'))
+            lambda_cosine = lambda iters: (math.cos(math.pi * iters / self.configer.get('train', 'max_iters'))
                                            + 1.0) / 2
             scheduler = lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda_cosine)
 
@@ -131,8 +131,8 @@ class OptimScheduler(object):
 
         elif policy == 'swa_lambda_poly':
             optimizer = torchcontrib.optim.SWA(optimizer)
-            normal_max_iters = int(self.configer.get('solver', 'max_iters') * 0.75)
-            swa_step_max_iters = (self.configer.get('solver',
+            normal_max_iters = int(self.configer.get('train', 'max_iters') * 0.75)
+            swa_step_max_iters = (self.configer.get('train',
                                                     'max_iters') - normal_max_iters) // 5 + 1  # we use 5 ensembles here
 
             def swa_lambda_poly(iters):
@@ -145,8 +145,8 @@ class OptimScheduler(object):
 
         elif policy == 'swa_lambda_cosine':
             optimizer = torchcontrib.optim.SWA(optimizer)
-            normal_max_iters = int(self.configer.get('solver', 'max_iters') * 0.75)
-            swa_step_max_iters = (self.configer.get('solver',
+            normal_max_iters = int(self.configer.get('train', 'max_iters') * 0.75)
+            swa_step_max_iters = (self.configer.get('train',
                                                     'max_iters') - normal_max_iters) // 5 + 1  # we use 5 ensembles here
 
             def swa_lambda_cosine(iters):
@@ -160,7 +160,7 @@ class OptimScheduler(object):
 
         elif policy == 'warmup_cosine':
             scheduler = WarmupCosineSchedule(optimizer, warmup_steps=1000,
-                                             t_total=self.configer.get('solver', 'max_iters'))
+                                             t_total=self.configer.get('train', 'max_iters'))
 
         else:
             Log.error('Policy:{} is not valid.'.format(policy))

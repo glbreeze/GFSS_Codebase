@@ -76,8 +76,8 @@ class Trainer(object):
 
         self.train_loader, _ = get_train_loader(self.configer, episodic=False)
         self.val_loader, _ = get_val_loader(self.configer, episodic=self.configer.get('val', 'episodic_val'))
-        self.configer.add(['solver', 'max_iters'], self.configer.get('solver','max_epoch')*len(self.train_loader))
-        Log.info('total iterations {}'.format(self.configer.get('solver', 'max_iters')))
+        self.configer.add(['train', 'max_iters'], self.configer.get('train','max_epoch')*len(self.train_loader))
+        Log.info('total iterations {}'.format(self.configer.get('train', 'max_iters')))
 
         params_group = self._get_parameters()
         self.optimizer, self.scheduler = self.optim_scheduler.init_optimizer(params_group)
@@ -166,17 +166,17 @@ class Trainer(object):
             start_time = time.time()
 
             # Print the log info & reset the states.
-            if self.configer.get('iters') % self.configer.get('solver', 'display_iter') == 0 and (not is_distributed() or get_rank() == 0):
+            if self.configer.get('iters') % self.configer.get('train', 'display_iter') == 0 and (not is_distributed() or get_rank() == 0):
                 Log.info('Train Epoch: {0}, Train Iteration: {1}, '
                          'Time {batch_time.sum:.3f}s/{2}iters, ({batch_time.avg:.3f}) '
                          'Learning rate = {3}, Loss = {loss.val:.4f} (ave = {loss.avg:.4f})\n'.format(
-                    self.configer.get('epoch'), self.configer.get('iters'), self.configer.get('solver', 'display_iter'),
+                    self.configer.get('epoch'), self.configer.get('iters'), self.configer.get('train', 'display_iter'),
                     [round(e, 6) for e in self.module_runner.get_lr(self.optimizer)], batch_time=self.batch_time, loss=self.train_losses))
                 self.batch_time.reset()
                 self.train_losses.reset()
 
             # Check to val the current model.
-            if self.configer.get('iters') % self.configer.get('solver', 'test_interval') == 0:
+            if self.configer.get('iters') % self.configer.get('train', 'test_interval') == 0:
                 if self.configer.get('val','episodic_val'):
                     val_Iou = self.episodic_validate()
                 else:
@@ -197,7 +197,7 @@ class Trainer(object):
                 self.__val(data_loader=self.data_loader.get_valloader(dataset='train'))
                 return
 
-        while self.configer.get('epoch') < self.configer.get('solver', 'max_epoch'):
+        while self.configer.get('epoch') < self.configer.get('train', 'max_epoch'):
             self.__train()
 
         # use swa to average the model
@@ -278,7 +278,7 @@ class Trainer(object):
             s_img = s_img.squeeze(0)  # [n_shots, 3, img_size, img_size]
             s_label = s_label.squeeze(0).long()  # [n_shots, img_size, img_size]
             with torch.no_grad():
-                s_feat = self.seg_net(s_img)['h']
+                s_feat = self.seg_net(s_img)['h']    # output from ASPP will be input for classifier
                 q_feat = self.seg_net(q_img)['h']
 
             classifier = copy.deepcopy(self.seg_net.classifier)
@@ -288,13 +288,14 @@ class Trainer(object):
             criterion = DiceLoss()
 
             # fine-tune classifier
-            for index in range(self.configer.get('adapt', 'adapt_iter')):
+            for index in range(self.configer.get('adapt', 'adapt_iters')):
                 pred_s_label = classifier(s_feat)  # [n_shot, 2(cls), 60, 60]
                 pred_s_label = F.interpolate(pred_s_label, size=s_label.size()[1:], mode='bilinear', align_corners=True)
-                s_loss = criterion(pred_s_label, s_label)  # pred_label: [n_shot, 2, 473, 473], label [n_shot, 473, 473]
+                s_loss = criterion(s_label, pred_s_label)  # pred_label: [n_shot, 2, 473, 473], label [n_shot, 473, 473]
                 optimizer.zero_grad()
                 s_loss.backward()
                 optimizer.step()
+
             # ====== Phase 2: Update query score using attention. ======
             with torch.no_grad():
                 pred_q = classifier(q_feat)
@@ -302,7 +303,6 @@ class Trainer(object):
 
             # IoU and loss
             curr_cls = subcls[0].item()  # 当前episode所关注的cls
-
             intersection, union, target = intersectionAndUnionGPU(pred_q.argmax(1), q_label, 2, 255)
             intersection, union = intersection.cpu(), union.cpu()
             cls_intersection[curr_cls] += intersection[1]  # only consider the FG
@@ -320,10 +320,16 @@ class Trainer(object):
 
         runtime = time.time() - start_time
         mIoU = np.mean(list(IoU.values()))  # IoU: dict{cls: cls-wise IoU}
-        msg = '----------- Val result: mIoU {:.4f} | time used {:.1f}m -----------\n'.format(mIoU, runtime / 60)
+        msg = '----------- Epoch {} Val result: mIoU {:.4f} | time used {:.1f}m -----------\n'.format(self.configer.get('epoch'), mIoU, runtime/60)
         for class_ in cls_union:
             msg += "\tClass {} : {:.4f} for pred\n".format(class_, IoU[class_])
         Log.info(msg)
+
+        self.seg_net.train()
+        self.pixel_loss.train()
+
+        self.batch_time.reset()
+        self.val_losses.reset()
 
         return mIoU
 

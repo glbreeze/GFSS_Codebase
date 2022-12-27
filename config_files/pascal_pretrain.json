@@ -7,7 +7,7 @@
     "manual_seed": 42,
     "method": "fcn_segmentor",
     "gpu": null,
-    "exp_name": "deeplab_r50_contrast",
+    "exp_name": "deeplab_r50_contrast_ep",
 
     "data": {
       "data_root": "../dataset/VOCdevkit/VOC2012",
@@ -32,9 +32,11 @@
    "train": {
       "ckpt_path": "checkpoints/",
       "batch_size": 8,
-      "epochs": 100,
-      "log_freq" : 50,
-      "save_models": true
+      "save_models": true,
+
+      "display_iter": 50,
+      "test_interval": 1000,
+      "max_epoch": 100
     },
 
   "network":{
@@ -69,18 +71,13 @@
   },
 
   "val": {
-    "episodic_val": false,
+    "episodic_val": true,
     "norm_feat": true,
     "batch_size": 50,
     "val_num": 1000,
     "ckpt_used": "best"
     },
 
-  "solver": {
-    "display_iter": 50,
-    "test_interval": 1000,
-    "max_epoch": 100
-  },
 
   "optim": {
     "optim_method": "sgd",

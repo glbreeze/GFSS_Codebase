@@ -32,9 +32,11 @@
    "train": {
       "ckpt_path": "checkpoints/",
       "batch_size": 8,
-      "epochs": 20,
-      "log_freq" : 200,
-      "save_models": true
+      "save_models": true,
+
+      "display_iter": 200,
+      "test_interval": 8000,
+      "max_epoch": 20
     },
 
   "network":{
@@ -75,12 +77,6 @@
     "val_num": 1000,
     "ckpt_used": "best"
     },
-
-  "solver": {
-    "display_iter": 50,
-    "test_interval": 20000,
-    "max_epoch": 20
-  },
 
   "optim": {
     "optim_method": "sgd",
