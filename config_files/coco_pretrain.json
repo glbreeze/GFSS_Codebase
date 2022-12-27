@@ -7,7 +7,7 @@
     "manual_seed": 42,
     "method": "fcn_segmentor",
     "gpu": null,
-    "exp_name": "deeplab_r50_contrast",
+    "exp_name": "deeplab_r50",
 
     "data": {
       "data_root": "/coco/",
@@ -78,8 +78,8 @@
 
   "solver": {
     "display_iter": 50,
-    "test_interval": 1000,
-    "max_epoch": 100
+    "test_interval": 20000,
+    "max_epoch": 20
   },
 
   "optim": {
@@ -97,7 +97,7 @@
   },
 
   "loss": {
-    "loss_type": "contrast_ce_loss",
+    "loss_type": "ce_loss",
     "smoothing": true,
     "params": {
       "ce_reduction": "elementwise_mean",

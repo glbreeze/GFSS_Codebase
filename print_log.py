@@ -29,12 +29,12 @@ while line:
         iou = line.split()[-1]
         iou_lst.append(float(iou))
 
-        new_line = line[30:].strip() + ', avg iou {}, max iou {},'.format(np.mean(iou_lst), np.max(iou_lst))
+        new_line = line[30:].strip() + ', avg iou {:.4f}, max iou {:.4f},'.format(np.mean(iou_lst), np.max(iou_lst))
 
         if eval_cnt>=4:
-            smt_iou = np.mean(iou[-4:])
+            smt_iou = np.mean(iou_lst[-4:])
             avg_iou_lst.append(smt_iou)
-            new_line = new_line + 'smt iou {}, max smt iou {}'.format(smt_iou, np.max(avg_iou_lst))
+            new_line = new_line + 'smt iou {:.4f}, max smt iou {:.4f}'.format(smt_iou, np.max(avg_iou_lst))
 
         print(new_line)
 

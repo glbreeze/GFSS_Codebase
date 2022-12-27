@@ -26,7 +26,7 @@ singularity exec --nv \
             /bin/bash -c " source /ext3/env.sh;
             python -m src.pretrain --config config_files/${DATA}_pretrain.json \
 					  --train_split ${SPLIT} \
-					 > log_${SPLIT}.txt 2>&1"
+					 > log${SPLIT}.txt 2>&1"
 
 echo "finish"
 
