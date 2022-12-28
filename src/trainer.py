@@ -42,6 +42,8 @@ class Trainer(object):
         self.batch_time = AverageMeter()
         self.train_losses = AverageMeter()
         self.val_losses = AverageMeter()
+        self.val_iou = []
+        self.val_avg_iou = [] # to keep track of smt iou
 
         self.loss_manager = LossManager(configer)
         self.module_runner = ModuleRunner(configer)
@@ -237,12 +239,21 @@ class Trainer(object):
 
         mIoU = (intersections / (unions + 1e-10)).mean()
         acc = intersections.sum() / unions.sum()
+        self.val_iou.append(mIoU)
         self.configer.update(['val_loss'], self.val_losses.avg)
         self.configer.update(['performance'], mIoU)
         self.module_runner.save_net(self.seg_net, save_mode='val_loss')
         self.module_runner.save_net(self.seg_net, save_mode='performance')
-        Log.info(f'====>Test Time {self.batch_time.avg:.2f}s/{self.batch_time.sum:.2f}s: '
-                 f'running loss {self.val_losses.avg:.2f}, Acc {acc:.4f}, mIoU {mIoU:.4f}\n')
+        msg = '====>Test Time {:.1f}s/{:.1f}s: loss {:.2f}, Acc {:.4f}, mIoU {:.4f}'.format(
+            self.batch_time.avg, self.batch_time.sum, self.val_losses.avg, acc, mIoU)
+        if len(self.val_iou)>=4:
+            smt_iou = np.mean(self.val_iou[-4:])
+            self.val_avg_iou.append(smt_iou)
+            msg += 'avg mIoU {:.4f}, max mIoU {:.4f}, smt mIoU {:.4f}, m_smt mIoU {:.4f}\n'.format(
+                np.mean(self.val_iou), np.max(self.val_iou), smt_iou, np.max(self.val_avg_iou))
+        else:
+            msg += '\n'
+        Log.info(msg)
 
         self.seg_net.train()
         self.pixel_loss.train()
@@ -284,6 +295,7 @@ class Trainer(object):
             classifier = copy.deepcopy(self.seg_net.classifier)
             classifier.eval()  # freeze local params in BN layer
             classifier.cls = nn.Conv2d(512, 2, kernel_size=1, stride=1, bias=True)
+            classifier = classifier.cuda()
             optimizer = torch.optim.SGD(classifier.cls.parameters(), lr=self.configer.get('adapt', 'cls_lr'))
             criterion = DiceLoss()
 
@@ -313,14 +325,17 @@ class Trainer(object):
             loss = criterion_standard(pred_q, q_label)
             self.val_losses.update(loss.item(), self.configer.get('val', 'batch_size'))
 
-            if (iter_num % 500 == 0):
-                mIoU = np.mean(list(IoU.values()))  # mIoU across cls
-                Log.info('==> Test: [{}/{}] mIoU {:.4f} Loss {loss_meter.val:.4f} ({loss_meter.avg:.4f}) '.format(
-                        iter_num, self.configer.get('val', 'val_num'), mIoU, loss_meter=self.val_losses))
-
         runtime = time.time() - start_time
         mIoU = np.mean(list(IoU.values()))  # IoU: dict{cls: cls-wise IoU}
-        msg = '----------- Epoch {} Val result: mIoU {:.4f} | time used {:.1f}m -----------\n'.format(self.configer.get('epoch'), mIoU, runtime/60)
+        self.val_iou.append(mIoU)
+        msg = '====>Test Epoch {} Test time {:.1f}m, result: mIoU {:.4f} '.format(self.configer.get('epoch'),  runtime/60, mIoU)
+        if len(self.val_iou) >=4:
+            smt_iou = np.mean(self.val_iou[-4:])
+            self.val_avg_iou.append(smt_iou)
+            msg += 'avg mIoU {:.4f}, max mIoU {:.4f}, smt mIoU {:.4f}, m_smt mIoU {:.4f}\n'.format(
+                np.mean(self.val_iou), np.max(self.val_iou), smt_iou, np.max(self.val_avg_iou))
+        else:
+            msg += '\n'
         for class_ in cls_union:
             msg += "\tClass {} : {:.4f} for pred\n".format(class_, IoU[class_])
         Log.info(msg)
