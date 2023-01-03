@@ -239,7 +239,7 @@ class Trainer(object):
 
         mIoU = (intersections / (unions + 1e-10)).mean()
         acc = intersections.sum() / unions.sum()
-        self.val_iou.append(mIoU)
+        self.val_iou.append(mIoU.cpu())
         self.configer.update(['val_loss'], self.val_losses.avg)
         self.configer.update(['performance'], mIoU)
         self.module_runner.save_net(self.seg_net, save_mode='val_loss')

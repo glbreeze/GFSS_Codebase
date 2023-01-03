@@ -10,7 +10,7 @@
 #SBATCH --mail-user=lg154@nyu.edu
 #SBATCH --output=pretrain.out
 #SBATCH --gres=gpu # How much gpu need, n is the number
-#SBATCH --partition=a100_1,a100_2,v100,rtx8000
+#SBATCH --partition=a100_1,a100_2,v100
 
 module purge
 
@@ -26,7 +26,7 @@ singularity exec --nv \
             /bin/bash -c " source /ext3/env.sh;
             python -m src.pretrain --config config_files/${DATA}_pretrain.json \
 					  --train_split ${SPLIT} \
-					 > log${SPLIT}.txt 2>&1"
+					 > log_${SPLIT}.txt 2>&1"
 
 echo "finish"
 
