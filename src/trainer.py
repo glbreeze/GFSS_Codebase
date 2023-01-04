@@ -246,7 +246,7 @@ class Trainer(object):
         self.module_runner.save_net(self.seg_net, save_mode='performance')
         msg = '====>Test Time {:.1f}s/{:.1f}s: loss {:.2f}, Acc {:.4f}, mIoU {:.4f}'.format(
             self.batch_time.avg, self.batch_time.sum, self.val_losses.avg, acc, mIoU)
-        if len(self.val_iou)>=4:
+        if len(self.val_iou) >= 4:
             smt_iou = np.mean(self.val_iou[-4:])
             self.val_avg_iou.append(smt_iou)
             msg += 'avg mIoU {:.4f}, max mIoU {:.4f}, smt mIoU {:.4f}, m_smt mIoU {:.4f}\n'.format(
@@ -297,7 +297,13 @@ class Trainer(object):
             classifier.cls = nn.Conv2d(512, 2, kernel_size=1, stride=1, bias=True)
             classifier = classifier.cuda()
             optimizer = torch.optim.SGD(classifier.cls.parameters(), lr=self.configer.get('adapt', 'cls_lr'))
-            criterion = DiceLoss()
+
+            if self.configer.get('adapt', 'loss') == 'dice':
+                criterion = DiceLoss()
+            elif self.configer.get('adapt', 'loss') == 'wce':
+                s_label_arr = s_label.cpu().numpy().copy()  # [n_task, n_shots, img_size, img_size]
+                bg_pix, fg_pix = np.where(s_label_arr == 0), np.where(s_label_arr == 1)
+                criterion = nn.CrossEntropyLoss(weight=torch.tensor([1.0, len(bg_pix[0]) / len(fg_pix[0])]).cuda(), ignore_index=255)
 
             # fine-tune classifier
             for index in range(self.configer.get('adapt', 'adapt_iters')):
@@ -327,9 +333,9 @@ class Trainer(object):
 
         runtime = time.time() - start_time
         mIoU = np.mean(list(IoU.values()))  # IoU: dict{cls: cls-wise IoU}
-        self.val_iou.append(mIoU)
+        self.val_iou.append(mIoU.cpu())
         msg = '====>Test Epoch {} Test time {:.1f}m, result: mIoU {:.4f} '.format(self.configer.get('epoch'),  runtime/60, mIoU)
-        if len(self.val_iou) >=4:
+        if len(self.val_iou) >= 4:
             smt_iou = np.mean(self.val_iou[-4:])
             self.val_avg_iou.append(smt_iou)
             msg += 'avg mIoU {:.4f}, max mIoU {:.4f}, smt mIoU {:.4f}, m_smt mIoU {:.4f}\n'.format(

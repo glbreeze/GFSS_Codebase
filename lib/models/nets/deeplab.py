@@ -6,7 +6,6 @@ from lib.models.modules.decoder_block import DeepLabHead, ASPPModule
 from lib.models.modules.projection import ProjectionHead
 from lib.models.tools.module_helper import ModuleHelper
 
-
 class DeepLabV3Contrast(nn.Module):
     def __init__(self, configer):
         super(DeepLabV3Contrast, self).__init__()
@@ -28,11 +27,14 @@ class DeepLabV3Contrast(nn.Module):
                                        nn.Conv2d(256, self.num_classes, kernel_size=1, stride=1, padding=0, bias=True))
         self.layer_aspp = ASPPModule(2048, 512, bn_type=self.bn_type)
 
-        self.classifier = nn.Sequential(OrderedDict([
-            ('conv1', nn.Conv2d(512, 512, kernel_size=3, padding=1, stride=1, bias=False)),
-            ('bn1', ModuleHelper.BatchNorm2d(bn_type=self.bn_type)(512)),
-            ('cls', nn.Conv2d(512, self.num_classes, kernel_size=1, stride=1, bias=True)),
-        ]))
+        if configer.get('network', 'classifier') == 'c':
+            self.classifier = nn.Sequential(OrderedDict([('cls', nn.Conv2d(512, self.num_classes, kernel_size=1, stride=1, bias=True))]))
+        else:
+            self.classifier = nn.Sequential(OrderedDict([
+                ('conv1', nn.Conv2d(512, 512, kernel_size=3, padding=1, stride=1, bias=False)),
+                ('bn1', ModuleHelper.BatchNorm2d(bn_type=self.bn_type)(512)),
+                ('cls', nn.Conv2d(512, self.num_classes, kernel_size=1, stride=1, bias=True)),
+            ]))
 
         for modules in [self.proj_head, self.layer_dsn, self.layer_aspp, self.classifier]:
             for m in modules.modules():
@@ -53,6 +55,7 @@ class DeepLabV3Contrast(nn.Module):
         x_seg = self.classifier(x_aspp)
 
         return {'embed': embedding, 'seg_aux': x_dsn, 'seg': x_seg, 'h': x_aspp}
+
 
 class DeepLabV3(nn.Module):
     def __init__(self, configer):

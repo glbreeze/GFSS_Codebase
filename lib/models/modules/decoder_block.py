@@ -79,8 +79,7 @@ class ASPPModule(nn.Module):
         feat1 = self.b1(x)
         feat2 = self.b2(x)
         feat3 = self.b3(x)
-        feat4 = F.interpolate(self.b4(x), size=(h, w), mode='bilinear',
-                              align_corners=True)
+        feat4 = F.interpolate(self.b4(x), size=(h, w), mode='bilinear', align_corners=True)
 
         out = torch.cat((feat0, feat1, feat2, feat3, feat4), dim=1)
         return self.project(out)

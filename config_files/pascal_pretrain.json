@@ -7,7 +7,7 @@
     "manual_seed": 42,
     "method": "fcn_segmentor",
     "gpu": null,
-    "exp_name": "deeplab_r50_contrast_ep",
+    "exp_name": "r50_ep",
 
     "data": {
       "data_root": "../dataset/VOCdevkit/VOC2012",
@@ -41,6 +41,7 @@
 
   "network":{
       "backbone": "deepbase_resnet50_dilated8",
+      "classifier": "c",
       "pretrained": "initmodel/resnet50_v2.pth",
       "gathered": false,
       "multi_grid": [1, 1, 1],
@@ -56,7 +57,8 @@
     },
   "adapt": {
     "cls_lr": 0.1,
-    "adapt_iters": 100
+    "adapt_iters": 100,
+    "loss": "wce"
   },
 
   "lr": {
@@ -94,7 +96,7 @@
   },
 
   "loss": {
-    "loss_type": "contrast_ce_loss",
+    "loss_type": "ce_loss",
     "smoothing": true,
     "params": {
       "ce_reduction": "elementwise_mean",
