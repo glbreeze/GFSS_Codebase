@@ -309,7 +309,7 @@ class Trainer(object):
             for index in range(self.configer.get('adapt', 'adapt_iters')):
                 pred_s_label = classifier(s_feat)  # [n_shot, 2(cls), 60, 60]
                 pred_s_label = F.interpolate(pred_s_label, size=s_label.size()[1:], mode='bilinear', align_corners=True)
-                s_loss = criterion(s_label, pred_s_label)  # pred_label: [n_shot, 2, 473, 473], label [n_shot, 473, 473]
+                s_loss = criterion(pred_s_label, s_label)  # pred_label: [n_shot, 2, 473, 473], label [n_shot, 473, 473]
                 optimizer.zero_grad()
                 s_loss.backward()
                 optimizer.step()
